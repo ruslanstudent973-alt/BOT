@@ -1,10 +1,10 @@
 import logging
 import asyncio
-from aiogram import Bot, Dispatcher, types
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.utils import executor
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 from flask import Flask
 from threading import Thread
 
@@ -17,8 +17,7 @@ logging.basicConfig(level=logging.INFO)
 
 # Bot initialization
 bot = Bot(token=config.BOT_TOKEN)
-storage = MemoryStorage()
-dp = Dispatcher(bot, storage=memory_storage if 'memory_storage' in locals() else storage)
+dp = Dispatcher(storage=MemoryStorage())
 
 # Flask for keeping the bot alive
 app = Flask(__name__)
@@ -38,12 +37,12 @@ class AddProduct(StatesGroup):
     waiting_for_price = State()
 
 # Handlers
-@dp.message_handler(commands=['start'])
+@dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     is_admin = message.from_user.id == config.ADMIN_ID
     await message.answer("Xush kelibsiz!", reply_markup=keyboards.get_main_menu(is_admin))
 
-@dp.message_handler(commands=['setgroup'])
+@dp.message(Command("setgroup"))
 async def cmd_setgroup(message: types.Message):
     if message.from_user.id != config.ADMIN_ID:
         return
@@ -51,14 +50,14 @@ async def cmd_setgroup(message: types.Message):
     database.set_group_id(group_id)
     await message.answer(f"Guruh ID saqlandi: {group_id}")
 
-@dp.message_handler(lambda message: message.text == '➕ Mahsulot qo\'shish')
-async def add_product_start(message: types.Message):
+@dp.message(F.text == '➕ Mahsulot qo\'shish')
+async def add_product_start(message: types.Message, state: FSMContext):
     if message.from_user.id != config.ADMIN_ID:
         return
-    await AddProduct.waiting_for_media.set()
+    await state.set_state(AddProduct.waiting_for_media)
     await message.answer("Mahsulot uchun rasm yoki video yuboring:")
 
-@dp.message_handler(state=AddProduct.waiting_for_media, content_types=['photo', 'video'])
+@dp.message(AddProduct.waiting_for_media, F.photo | F.video)
 async def process_media(message: types.Message, state: FSMContext):
     if message.photo:
         media_id = message.photo[-1].file_id
@@ -68,22 +67,22 @@ async def process_media(message: types.Message, state: FSMContext):
         media_type = 'video'
     
     await state.update_data(media_id=media_id, media_type=media_type)
-    await AddProduct.next()
+    await state.set_state(AddProduct.waiting_for_name)
     await message.answer("Mahsulot nomini kiriting:")
 
-@dp.message_handler(state=AddProduct.waiting_for_name)
+@dp.message(AddProduct.waiting_for_name)
 async def process_name(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
-    await AddProduct.next()
+    await state.set_state(AddProduct.waiting_for_description)
     await message.answer("Mahsulot ta'rifini kiriting:")
 
-@dp.message_handler(state=AddProduct.waiting_for_description)
+@dp.message(AddProduct.waiting_for_description)
 async def process_description(message: types.Message, state: FSMContext):
     await state.update_data(description=message.text)
-    await AddProduct.next()
+    await state.set_state(AddProduct.waiting_for_price)
     await message.answer("Mahsulot narxini kiriting (faqat son):")
 
-@dp.message_handler(state=AddProduct.waiting_for_price)
+@dp.message(AddProduct.waiting_for_price)
 async def process_price(message: types.Message, state: FSMContext):
     try:
         price = float(message.text)
@@ -94,10 +93,10 @@ async def process_price(message: types.Message, state: FSMContext):
     data = await state.get_data()
     database.add_product(data['media_id'], data['media_type'], data['name'], data['description'], price)
     
-    await state.finish()
+    await state.clear()
     await message.answer("Mahsulot muvaffaqiyatli qo'shildi!", reply_markup=keyboards.get_main_menu(True))
 
-@dp.message_handler(lambda message: message.text == '📋 Mahsulotlar')
+@dp.message(F.text == '📋 Mahsulotlar')
 async def list_products(message: types.Message):
     if message.from_user.id != config.ADMIN_ID:
         return
@@ -113,7 +112,7 @@ async def list_products(message: types.Message):
         else:
             await bot.send_video(message.chat.id, p[1], caption=text)
 
-@dp.message_handler(lambda message: message.text == '📤 Hozir yuborish')
+@dp.message(F.text == '📤 Hozir yuborish')
 async def send_to_group(message: types.Message):
     if message.from_user.id != config.ADMIN_ID:
         return
@@ -139,23 +138,29 @@ async def send_to_group(message: types.Message):
     except Exception as e:
         await message.answer(f"Xatolik: {str(e)}")
 
-@dp.message_handler(lambda message: message.text == '🛍 Magazinga kirish')
+@dp.message(F.text == '🛍 Magazinga kirish')
 async def enter_shop(message: types.Message):
-    await message.answer("Magazinimizga xush kelibsiz! Mahsulotlarni ko'rish uchun pastdagi tugmalardan foydalaning.")
+    await message.answer("Magazinimizga xush kelibsiz! Mahsulotlarni ko'rish uchun pastdagi tugmalardan foydaning.")
 
-@dp.message_handler(lambda message: message.text == '👨💻 Admin Panel')
+@dp.message(F.text == '👨💻 Admin Panel')
 async def admin_panel(message: types.Message):
     if message.from_user.id == config.ADMIN_ID:
         await message.answer("Admin panelga xush kelibsiz!", reply_markup=keyboards.get_admin_inline())
 
-@dp.callback_query_handler(lambda c: c.data.startswith('buy_'))
+@dp.callback_query(F.data.startswith('buy_'))
 async def process_buy(callback_query: types.CallbackQuery):
     product_id = callback_query.data.split('_')[1]
-    await bot.answer_callback_query(callback_query.id, text="Sotib olish so'rovi qabul qilindi!")
+    await callback_query.answer(text="Sotib olish so'rovi qabul qilindi!")
     await bot.send_message(callback_query.from_user.id, f"Siz {product_id}-raqamli mahsulotni sotib olishni tanladingiz. Tez orada operator bog'lanadi.")
 
-if __name__ == '__main__':
+async def main():
     # Start Flask in a separate thread
     Thread(target=run_flask).start()
     # Start Bot
-    executor.start_polling(dp, skip_updates=True)
+    await dp.start_polling(bot)
+
+if __name__ == '__main__':
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logging.error("Bot stopped!")

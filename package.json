@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node bot.js",
-    "start": "node bot.js",
-    "build": "echo 'No build step needed'",
+    "dev": "python3 bot.py",
+    "start": "python3 bot.py",
+    "build": "curl -sS https://bootstrap.pypa.io/get-pip.py | python3 && python3 -m pip install -r requirements.txt",
     "clean": "rm -rf dist",
     "lint": "echo 'No lint step needed'"
   },

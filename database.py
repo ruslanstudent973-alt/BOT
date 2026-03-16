@@ -69,4 +69,12 @@ def get_random_product():
     conn.close()
     return row
 
+def get_product_by_id(product_id):
+    conn = sqlite3.connect('shop.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM products WHERE id = ?", (product_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row
+
 init_db()

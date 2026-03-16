@@ -12,7 +12,31 @@ def get_main_menu(is_admin=False):
 
 def get_buy_inline(product_id):
     kb = [
-        [InlineKeyboardButton(text='Sotib olish', callback_data=f'buy_{product_id}')]
+        [InlineKeyboardButton(text='Sotib olaman', callback_data=f'buy_{product_id}')]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+def get_contact_inline(user_id):
+    kb = [
+        [InlineKeyboardButton(text='👉 Aloqa qilish', url=f'tg://user?id={user_id}')]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+def get_duration_inline():
+    kb = [
+        [
+            InlineKeyboardButton(text='30 minut', callback_data='dur_30'),
+            InlineKeyboardButton(text='1 soat', callback_data='dur_60')
+        ],
+        [
+            InlineKeyboardButton(text='3 soat', callback_data='dur_180'),
+            InlineKeyboardButton(text='6 soat', callback_data='dur_360')
+        ],
+        [
+            InlineKeyboardButton(text='12 soat', callback_data='dur_720'),
+            InlineKeyboardButton(text='24 soat', callback_data='dur_1440')
+        ],
+        [InlineKeyboardButton(text='O\'chirmaslik', callback_data='dur_0')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 

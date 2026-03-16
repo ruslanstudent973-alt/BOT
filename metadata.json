@@ -1,0 +1,5 @@
+{
+  "name": "Telegram Shop Bot",
+  "description": "Aiogram 2.25.1 va Flask yordamida yaratilgan Telegram bot. Mahsulotlar boshqaruvi va guruhga avtomatik yuborish funksiyalari bilan.",
+  "requestFramePermissions": []
+}

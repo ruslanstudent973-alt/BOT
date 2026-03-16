@@ -16,6 +16,10 @@ import keyboards
 logging.basicConfig(level=logging.INFO)
 
 # Bot initialization
+if not config.BOT_TOKEN:
+    logging.error("BOT_TOKEN is not set in environment variables!")
+    exit(1)
+
 bot = Bot(token=config.BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 

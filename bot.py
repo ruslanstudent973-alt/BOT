@@ -1,5 +1,7 @@
 import logging
 import asyncio
+import time
+from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import Message, CallbackQuery, InlineQuery, InlineQueryResultArticle, InputTextMessageContent, InlineQueryResultPhoto, InlineQueryResultVideo
 from aiogram.filters import Command
@@ -26,13 +28,20 @@ dp = Dispatcher(storage=MemoryStorage())
 
 # Flask for keeping the bot alive
 app = Flask(__name__)
+start_time = datetime.now()
 
 @app.route('/')
 def home():
-    return "Bot is running!"
+    uptime = datetime.now() - start_time
+    return f"Bot is running! Uptime: {uptime}"
+
+@app.route('/health')
+def health():
+    return "OK", 200
 
 def run_flask():
-    app.run(host='0.0.0.0', port=3000)
+    # Use threaded=True for better handling of requests while bot is running
+    app.run(host='0.0.0.0', port=3000, threaded=True)
 
 # States
 class AddProduct(StatesGroup):
@@ -248,6 +257,24 @@ async def enter_shop(message: types.Message):
 async def admin_panel(message: types.Message):
     if message.from_user.id == config.ADMIN_ID:
         await message.answer("Admin panelga xush kelibsiz!", reply_markup=keyboards.get_admin_inline())
+
+@dp.callback_query(F.data == 'admin_stats')
+async def admin_stats(callback_query: types.CallbackQuery):
+    if callback_query.from_user.id != config.ADMIN_ID:
+        return
+    
+    products = database.get_all_products()
+    uptime = datetime.now() - start_time
+    
+    text = (
+        f"📊 BOT STATISTIKASI\n"
+        f"━━━━━━━━━━━━━━━\n\n"
+        f"📦 Mahsulotlar soni: {len(products)} ta\n"
+        f"⏱ Bot ish vaqti: {str(uptime).split('.')[0]}\n"
+        f"🌐 Server: Google Cloud (24/7 Online)\n"
+    )
+    await callback_query.message.answer(text)
+    await callback_query.answer()
 
 @dp.callback_query(F.data.startswith('buy_'))
 async def process_buy(callback_query: types.CallbackQuery):

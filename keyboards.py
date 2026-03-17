@@ -22,6 +22,20 @@ def get_contact_inline(user_id):
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
+def get_cargo_inline(product_id):
+    kb = [
+        [InlineKeyboardButton(text='🚀 2-8 kunlik (100g/14,000)', callback_data=f'cargo_{product_id}_fast')],
+        [InlineKeyboardButton(text='🐢 12-15 kunlik (100g/10,000)', callback_data=f'cargo_{product_id}_slow')]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+def get_payment_inline(product_id, cargo_type):
+    kb = [
+        [InlineKeyboardButton(text='💳 50% oldindan to\'lov', callback_data=f'pay_{product_id}_{cargo_type}_50')],
+        [InlineKeyboardButton(text='💰 100% to\'liq to\'lov', callback_data=f'pay_{product_id}_{cargo_type}_100')]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
 def get_duration_inline():
     kb = [
         [

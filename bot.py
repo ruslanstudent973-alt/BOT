@@ -145,35 +145,44 @@ async def process_price(message: types.Message, state: FSMContext):
 @dp.inline_query()
 async def inline_search(inline_query: InlineQuery):
     query = inline_query.query.lower()
-    products = database.get_all_products()
+    offset = int(inline_query.offset) if inline_query.offset else 0
+    limit = 10  # Har bir sahifada 10 ta mahsulot
+    
+    all_products = database.get_all_products()
+    filtered_products = [p for p in all_products if query in p[3].lower() or query in p[4].lower()]
+    
+    # Sahifalash uchun kesib olish
+    paginated_products = filtered_products[offset : offset + limit]
+    
     results = []
+    for p in paginated_products:
+        text = get_product_text(p, is_sale=False)
+        markup = keyboards.get_buy_inline(p[0])
+        
+        if p[2] == 'photo':
+            results.append(InlineQueryResultPhoto(
+                id=str(p[0]),
+                photo_url=p[1],
+                thumbnail_url=p[1],
+                caption=text,
+                reply_markup=markup,
+                parse_mode="HTML"
+            ))
+        else:
+            results.append(InlineQueryResultVideo(
+                id=str(p[0]),
+                video_url=p[1],
+                title=p[3],
+                caption=text,
+                reply_markup=markup,
+                mime_type="video/mp4",
+                parse_mode="HTML"
+            ))
     
-    for p in products:
-        if query in p[3].lower() or query in p[4].lower():
-            text = get_product_text(p, is_sale=False)
-            markup = keyboards.get_buy_inline(p[0])
-            
-            if p[2] == 'photo':
-                results.append(InlineQueryResultPhoto(
-                    id=str(p[0]),
-                    photo_url=p[1],
-                    thumbnail_url=p[1],
-                    caption=text,
-                    reply_markup=markup,
-                    parse_mode="HTML"
-                ))
-            else:
-                results.append(InlineQueryResultVideo(
-                    id=str(p[0]),
-                    video_url=p[1],
-                    title=p[3],
-                    caption=text,
-                    reply_markup=markup,
-                    mime_type="video/mp4",
-                    parse_mode="HTML"
-                ))
+    # Keyingi sahifa bormi yoki yo'qligini aniqlash
+    next_offset = str(offset + limit) if offset + limit < len(filtered_products) else ""
     
-    await inline_query.answer(results, cache_time=1)
+    await inline_query.answer(results, cache_time=1, next_offset=next_offset)
 
 @dp.message(F.text == '📋 Mahsulotlar')
 async def list_products(message: types.Message):

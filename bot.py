@@ -406,11 +406,6 @@ async def main():
         logging.error("Bot cannot start because BOT_TOKEN is missing!")
         return
             
-    logging.info("Bot is starting in Webhook mode...")
-    
-    # Setup dispatcher
-    dp.startup.register(on_startup)
-    
     # Create aiohttp application
     app = web.Application()
     
@@ -418,8 +413,12 @@ async def main():
     app.router.add_get('/', handle_home)
     app.router.add_get('/health', handle_health)
     
-    # Setup webhook handler
     if config.APP_URL:
+        logging.info("Bot is starting in Webhook mode...")
+        # Setup dispatcher
+        dp.startup.register(on_startup)
+        
+        # Setup webhook handler
         webhook_requests_handler = SimpleRequestHandler(
             dispatcher=dp,
             bot=bot
@@ -427,10 +426,26 @@ async def main():
         webhook_requests_handler.register(app, path=config.WEBHOOK_PATH)
         setup_application(app, dp, bot=bot)
         
-        # Run application
-        web.run_app(app, host='0.0.0.0', port=3000)
+        # Run application (this blocks)
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', 3000)
+        await site.start()
+        logging.info(f"Webhook server started on port 3000")
+        
+        # Keep running
+        while True:
+            await asyncio.sleep(3600)
     else:
-        # Fallback to polling if APP_URL is not set
+        # Start web server in background to keep Render happy
+        logging.warning("APP_URL not set! Starting web server in background and falling back to Polling.")
+        
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', 3000)
+        await site.start()
+        logging.info("Web server started on port 3000")
+        
         logging.info("Starting in Polling mode...")
         await dp.start_polling(bot, skip_updates=True, handle_signals=False)
 

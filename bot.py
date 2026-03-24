@@ -408,17 +408,19 @@ async def main():
             
     # Create aiohttp application
     app = web.Application()
-    
-    # Add custom routes
     app.router.add_get('/', handle_home)
     app.router.add_get('/health', handle_health)
     
+    # Start web server
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 3000)
+    await site.start()
+    logging.info("Web server started on port 3000")
+
     if config.APP_URL:
-        logging.info("Bot is starting in Webhook mode...")
-        # Setup dispatcher
+        logging.info("Setting up Webhook...")
         dp.startup.register(on_startup)
-        
-        # Setup webhook handler
         webhook_requests_handler = SimpleRequestHandler(
             dispatcher=dp,
             bot=bot
@@ -426,29 +428,13 @@ async def main():
         webhook_requests_handler.register(app, path=config.WEBHOOK_PATH)
         setup_application(app, dp, bot=bot)
         
-        # Run application
-        runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, '0.0.0.0', 3000)
-        await site.start()
-        logging.info(f"Webhook server started on port 3000")
-        
-        # Keep the event loop running
+        # Webhook rejimida botni ushlab turish
         while True:
             await asyncio.sleep(3600)
     else:
-        # Start web server in background to keep Render happy
-        logging.warning("APP_URL not set! Starting web server in background and falling back to Polling.")
-        
-        runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, '0.0.0.0', 3000)
-        await site.start()
-        logging.info("Web server started on port 3000 to satisfy Render's port check.")
-        
-        logging.info("Starting in Polling mode...")
-        # Start polling (this blocks)
-        await dp.start_polling(bot, skip_updates=True, handle_signals=False)
+        logging.warning("APP_URL not set! Falling back to Polling mode.")
+        logging.info("Starting Polling...")
+        await dp.start_polling(bot, skip_updates=True)
 
 if __name__ == '__main__':
     try:

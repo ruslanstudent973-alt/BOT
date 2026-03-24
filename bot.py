@@ -9,8 +9,8 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from flask import Flask
-from threading import Thread
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from aiohttp import web
 
 import config
 import database
@@ -29,23 +29,24 @@ else:
 
 dp = Dispatcher(storage=MemoryStorage())
 
-# Flask for keeping the bot alive
-app = Flask(__name__)
+# Flask for keeping the bot alive (REPLACED BY AIOHTTP)
 start_time = datetime.now()
 
-@app.route('/')
-def home():
+async def handle_home(request):
     uptime = datetime.now() - start_time
     status = "READY" if bot else "ERROR: BOT_TOKEN MISSING"
-    return f"Bot is running! Status: {status} | Uptime: {uptime}"
+    return web.Response(text=f"Bot is running! Status: {status} | Uptime: {uptime}")
 
-@app.route('/health')
-def health():
-    return "OK", 200
+async def handle_health(request):
+    return web.Response(text="OK", status=200)
 
-def run_flask():
-    # Use threaded=True for better handling of requests while bot is running
-    app.run(host='0.0.0.0', port=3000, threaded=True)
+async def on_startup(bot: Bot):
+    if config.APP_URL:
+        webhook_url = f"{config.APP_URL}{config.WEBHOOK_PATH}"
+        await bot.set_webhook(webhook_url, drop_pending_updates=True)
+        logging.info(f"Webhook set to: {webhook_url}")
+    else:
+        logging.warning("APP_URL not set! Falling back to Polling.")
 
 # States
 class AddProduct(StatesGroup):
@@ -400,43 +401,38 @@ async def process_payment(callback_query: types.CallbackQuery):
     )
     await callback_query.answer()
 
-async def keep_alive():
-    """Task to ping the Flask server to keep the bot alive."""
-    await asyncio.sleep(10) # Wait for Flask to start
-    async with aiohttp.ClientSession() as session:
-        while True:
-            try:
-                async with session.get(config.APP_URL) as response:
-                    if response.status == 200:
-                        logging.info("Heartbeat: Bot is alive!")
-                    else:
-                        logging.warning(f"Heartbeat: Unexpected status {response.status}")
-            except Exception as e:
-                logging.error(f"Heartbeat error: {e}")
-            await asyncio.sleep(60) # Ping every 1 minute for better stability
-
 async def main():
-    # Start Flask in a separate thread
-    Thread(target=run_flask).start()
-    
-    # Start keep-alive task
-    asyncio.create_task(keep_alive())
-    
     if not bot:
         logging.error("Bot cannot start because BOT_TOKEN is missing!")
-        while True:
-            await asyncio.sleep(60) # Keep Flask alive
+        return
             
-    logging.info("Bot is starting...")
+    logging.info("Bot is starting in Webhook mode...")
     
-    while True:
-        try:
-            # Start Bot with more robust settings
-            await dp.start_polling(bot, skip_updates=True, handle_signals=False)
-        except Exception as e:
-            logging.error(f"Bot polling error: {e}")
-            logging.info("Restarting polling in 5 seconds...")
-            await asyncio.sleep(5)
+    # Setup dispatcher
+    dp.startup.register(on_startup)
+    
+    # Create aiohttp application
+    app = web.Application()
+    
+    # Add custom routes
+    app.router.add_get('/', handle_home)
+    app.router.add_get('/health', handle_health)
+    
+    # Setup webhook handler
+    if config.APP_URL:
+        webhook_requests_handler = SimpleRequestHandler(
+            dispatcher=dp,
+            bot=bot
+        )
+        webhook_requests_handler.register(app, path=config.WEBHOOK_PATH)
+        setup_application(app, dp, bot=bot)
+        
+        # Run application
+        web.run_app(app, host='0.0.0.0', port=3000)
+    else:
+        # Fallback to polling if APP_URL is not set
+        logging.info("Starting in Polling mode...")
+        await dp.start_polling(bot, skip_updates=True, handle_signals=False)
 
 if __name__ == '__main__':
     try:

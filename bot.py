@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import time
+import aiohttp
 from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.types import Message, CallbackQuery, InlineQuery, InlineQueryResultArticle, InputTextMessageContent, InlineQueryResultPhoto, InlineQueryResultVideo
@@ -56,6 +57,10 @@ class AddProduct(StatesGroup):
 class SendProduct(StatesGroup):
     waiting_for_duration = State()
 
+class Registration(StatesGroup):
+    waiting_for_phone = State()
+    waiting_for_address = State()
+
 # Handlers
 def get_product_text(product, is_sale=True):
     base_price = product[5]
@@ -87,9 +92,60 @@ def get_product_text(product, is_sale=True):
     )
 
 @dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    is_admin = message.from_user.id == config.ADMIN_ID
-    await message.answer("Xush kelibsiz!", reply_markup=keyboards.get_main_menu(is_admin))
+async def cmd_start(message: types.Message, state: FSMContext):
+    user_id = message.from_user.id
+    user = database.get_user(user_id)
+    
+    if not user:
+        await message.answer(
+            "Xush kelibsiz! Botdan foydalanish uchun ro'yxatdan o'tishingiz kerak.\n"
+            "Iltimos, telefon raqamingizni yuboring:",
+            reply_markup=keyboards.get_phone_keyboard()
+        )
+        await state.set_state(Registration.waiting_for_phone)
+        return
+
+    is_admin = user_id == config.ADMIN_ID
+    await message.answer(
+        f"Xush kelibsiz, {user[3]}!", 
+        reply_markup=keyboards.get_main_menu(is_admin)
+    )
+
+@dp.message(Registration.waiting_for_phone, F.contact)
+async def process_phone(message: Message, state: FSMContext):
+    await state.update_data(phone=message.contact.phone_number)
+    await message.answer(
+        "Rahmat! Endi mahsulotlarni yetkazib berish uchun manzilingizni yuboring (masalan: Toshkent sh, Yunusobod tumani...):",
+        reply_markup=types.ReplyKeyboardRemove()
+    )
+    await state.set_state(Registration.waiting_for_address)
+
+@dp.message(Registration.waiting_for_phone)
+async def process_phone_text(message: Message, state: FSMContext):
+    if message.text and (message.text.startswith('+') or message.text.isdigit()):
+        await state.update_data(phone=message.text)
+        await message.answer(
+            "Rahmat! Endi mahsulotlarni yetkazib berish uchun manzilingizni yuboring (masalan: Toshkent sh, Yunusobod tumani...):",
+            reply_markup=types.ReplyKeyboardRemove()
+        )
+        await state.set_state(Registration.waiting_for_address)
+    else:
+        await message.answer("Iltimos, pastdagi tugmani bosing yoki telefon raqamingizni to'g'ri formatda yuboring.")
+
+@dp.message(Registration.waiting_for_address)
+async def process_address(message: Message, state: FSMContext):
+    data = await state.get_data()
+    user_id = message.from_user.id
+    full_name = message.from_user.full_name
+    
+    database.add_user(user_id, data['phone'], message.text, full_name)
+    
+    await state.clear()
+    is_admin = user_id == config.ADMIN_ID
+    await message.answer(
+        "Ro'yxatdan muvaffaqiyatli o'tdingiz! Endi magazinimizdan foydalanishingiz mumkin.",
+        reply_markup=keyboards.get_main_menu(is_admin)
+    )
 
 @dp.message(Command("setgroup"))
 async def cmd_setgroup(message: types.Message):
@@ -309,7 +365,8 @@ async def process_payment(callback_query: types.CallbackQuery):
     pay_type = data[3]
     
     product = database.get_product_by_id(product_id)
-    user = callback_query.from_user
+    user_tg = callback_query.from_user
+    user_db = database.get_user(user_tg.id)
     
     cargo_name = "🚀 2-8 kunlik (Fast)" if cargo_type == "fast" else "🐢 12-15 kunlik (Slow)"
     pay_name = "💳 50% oldindan" if pay_type == "50" else "💰 100% to'liq"
@@ -318,12 +375,17 @@ async def process_payment(callback_query: types.CallbackQuery):
     await callback_query.message.edit_text("✅ Buyurtmangiz qabul qilindi! Admin tez orada bog'lanadi.")
     
     # Notify Admin
+    phone = user_db[1] if user_db else "Mavjud emas"
+    address = user_db[2] if user_db else "Mavjud emas"
+    
     admin_text = (
         f"🛒 YANGI BUYURTMA!\n"
         f"━━━━━━━━━━━━━━━\n\n"
-        f"👤 Xaridor: {user.full_name}\n"
-        f"📱 Username: @{user.username if user.username else 'Mavjud emas'}\n"
-        f"🆔 Telegram ID: {user.id}\n\n"
+        f"👤 Xaridor: {user_tg.full_name}\n"
+        f"📱 Username: @{user_tg.username if user_tg.username else 'Mavjud emas'}\n"
+        f"🆔 Telegram ID: {user_tg.id}\n"
+        f"📞 Telefon: {phone}\n"
+        f"📍 Manzil: {address}\n\n"
         f"📦 Mahsulot: {product[3]}\n"
         f"💰 Narx: {product[5]:,.0f} so'm\n"
         f"🚚 Kargo: {cargo_name}\n"
@@ -338,9 +400,27 @@ async def process_payment(callback_query: types.CallbackQuery):
     )
     await callback_query.answer()
 
+async def keep_alive():
+    """Task to ping the Flask server to keep the bot alive."""
+    await asyncio.sleep(10) # Wait for Flask to start
+    async with aiohttp.ClientSession() as session:
+        while True:
+            try:
+                async with session.get(config.APP_URL) as response:
+                    if response.status == 200:
+                        logging.info("Heartbeat: Bot is alive!")
+                    else:
+                        logging.warning(f"Heartbeat: Unexpected status {response.status}")
+            except Exception as e:
+                logging.error(f"Heartbeat error: {e}")
+            await asyncio.sleep(150) # Ping every 2.5 minutes
+
 async def main():
     # Start Flask in a separate thread
     Thread(target=run_flask).start()
+    
+    # Start keep-alive task
+    asyncio.create_task(keep_alive())
     
     if not bot:
         logging.error("Bot cannot start because BOT_TOKEN is missing!")

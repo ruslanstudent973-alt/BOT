@@ -27,8 +27,32 @@ def init_db():
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            phone TEXT,
+            address TEXT,
+            full_name TEXT
+        )
+    ''')
     conn.commit()
     conn.close()
+
+def add_user(user_id, phone, address, full_name):
+    conn = sqlite3.connect('shop.db')
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO users (user_id, phone, address, full_name) VALUES (?, ?, ?, ?)",
+                   (user_id, phone, address, full_name))
+    conn.commit()
+    conn.close()
+
+def get_user(user_id):
+    conn = sqlite3.connect('shop.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row
 
 def set_group_id(group_id):
     conn = sqlite3.connect('shop.db')

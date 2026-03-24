@@ -59,3 +59,9 @@ def get_admin_inline():
         [InlineKeyboardButton(text='Statistika', callback_data='admin_stats')]
     ]
     return InlineKeyboardMarkup(inline_keyboard=kb)
+
+def get_phone_keyboard():
+    kb = [
+        [KeyboardButton(text='📱 Telefon raqamni yuborish', request_contact=True)]
+    ]
+    return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True, one_time_keyboard=True)

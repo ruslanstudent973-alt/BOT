@@ -20,10 +20,12 @@ logging.basicConfig(level=logging.INFO)
 
 # Bot initialization
 if not config.BOT_TOKEN:
-    logging.error("BOT_TOKEN is not set in environment variables!")
-    exit(1)
+    logging.error("BOT_TOKEN is missing! Please set it in the platform settings.")
+    # Don't exit immediately, let the Flask server run so the user can see the status
+    bot = None
+else:
+    bot = Bot(token=config.BOT_TOKEN)
 
-bot = Bot(token=config.BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
 # Flask for keeping the bot alive
@@ -33,7 +35,8 @@ start_time = datetime.now()
 @app.route('/')
 def home():
     uptime = datetime.now() - start_time
-    return f"Bot is running! Uptime: {uptime}"
+    status = "READY" if bot else "ERROR: BOT_TOKEN MISSING"
+    return f"Bot is running! Status: {status} | Uptime: {uptime}"
 
 @app.route('/health')
 def health():
@@ -338,8 +341,22 @@ async def process_payment(callback_query: types.CallbackQuery):
 async def main():
     # Start Flask in a separate thread
     Thread(target=run_flask).start()
-    # Start Bot
-    await dp.start_polling(bot)
+    
+    if not bot:
+        logging.error("Bot cannot start because BOT_TOKEN is missing!")
+        while True:
+            await asyncio.sleep(60) # Keep Flask alive
+            
+    logging.info("Bot is starting...")
+    
+    while True:
+        try:
+            # Start Bot
+            await dp.start_polling(bot, skip_updates=True)
+        except Exception as e:
+            logging.error(f"Bot polling error: {e}")
+            logging.info("Retrying in 5 seconds...")
+            await asyncio.sleep(5)
 
 if __name__ == '__main__':
     try:

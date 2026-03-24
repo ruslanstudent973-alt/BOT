@@ -426,14 +426,14 @@ async def main():
         webhook_requests_handler.register(app, path=config.WEBHOOK_PATH)
         setup_application(app, dp, bot=bot)
         
-        # Run application (this blocks)
+        # Run application
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, '0.0.0.0', 3000)
         await site.start()
         logging.info(f"Webhook server started on port 3000")
         
-        # Keep running
+        # Keep the event loop running
         while True:
             await asyncio.sleep(3600)
     else:
@@ -444,9 +444,10 @@ async def main():
         await runner.setup()
         site = web.TCPSite(runner, '0.0.0.0', 3000)
         await site.start()
-        logging.info("Web server started on port 3000")
+        logging.info("Web server started on port 3000 to satisfy Render's port check.")
         
         logging.info("Starting in Polling mode...")
+        # Start polling (this blocks)
         await dp.start_polling(bot, skip_updates=True, handle_signals=False)
 
 if __name__ == '__main__':

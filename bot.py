@@ -413,7 +413,7 @@ async def keep_alive():
                         logging.warning(f"Heartbeat: Unexpected status {response.status}")
             except Exception as e:
                 logging.error(f"Heartbeat error: {e}")
-            await asyncio.sleep(150) # Ping every 2.5 minutes
+            await asyncio.sleep(60) # Ping every 1 minute for better stability
 
 async def main():
     # Start Flask in a separate thread
@@ -431,11 +431,11 @@ async def main():
     
     while True:
         try:
-            # Start Bot
-            await dp.start_polling(bot, skip_updates=True)
+            # Start Bot with more robust settings
+            await dp.start_polling(bot, skip_updates=True, handle_signals=False)
         except Exception as e:
             logging.error(f"Bot polling error: {e}")
-            logging.info("Retrying in 5 seconds...")
+            logging.info("Restarting polling in 5 seconds...")
             await asyncio.sleep(5)
 
 if __name__ == '__main__':

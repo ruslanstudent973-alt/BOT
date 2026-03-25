@@ -1,4 +1,5 @@
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+import config
 
 def get_main_menu(is_admin=False):
     kb = [
@@ -7,6 +8,8 @@ def get_main_menu(is_admin=False):
     if is_admin:
         kb.append([KeyboardButton(text='➕ Mahsulot qo\'shish'), KeyboardButton(text='📋 Mahsulotlar')])
         kb.append([KeyboardButton(text='📤 Hozir yuborish'), KeyboardButton(text='👨💻 Admin Panel')])
+        if config.APP_URL:
+            kb.append([KeyboardButton(text='📝 Post Generator (Sayt)', web_app=WebAppInfo(url=f"{config.APP_URL}/app"))])
     
     return ReplyKeyboardMarkup(keyboard=kb, resize_keyboard=True)
 

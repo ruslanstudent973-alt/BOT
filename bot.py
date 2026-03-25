@@ -11,6 +11,9 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from aiohttp import web
+import json
+import os
+from aiogram.types import InputMediaPhoto
 
 import config
 import database
@@ -39,6 +42,67 @@ async def handle_home(request):
 
 async def handle_health(request):
     return web.Response(text="OK", status=200)
+
+async def handle_api_post(request):
+    try:
+        reader = await request.multipart()
+        data = {}
+        images = []
+        
+        while True:
+            part = await reader.next()
+            if part is None:
+                break
+            
+            if part.name.startswith('image_'):
+                content = await part.read()
+                images.append(content)
+            else:
+                data[part.name] = await part.text()
+        
+        description = data.get('description')
+        price = data.get('price')
+        time_val = data.get('time')
+        group_id = data.get('groupId')
+        
+        if not all([description, price, time_val, group_id]):
+            return web.json_response({"error": "Missing fields"}, status=400)
+            
+        # Format the post text
+        post_text = (
+            f"🌟 YANGI E'LON\n"
+            f"━━━━━━━━━━━━━━━\n\n"
+            f"📝 {description}\n\n"
+            f"💰 Narxi: {price}\n"
+            f"⏰ Vaqti: {time_val}\n\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"⚡️ @{ (await bot.get_me()).username }"
+        )
+        
+        # Send media group
+        media = []
+        for i, img_content in enumerate(images):
+            media.append(InputMediaPhoto(
+                media=types.BufferedInputFile(img_content, filename=f"image_{i}.jpg"),
+                caption=post_text if i == 0 else "",
+                parse_mode="HTML"
+            ))
+            
+        if not media:
+            # If no images, send as text
+            msg = await bot.send_message(group_id, post_text, parse_mode="HTML")
+        else:
+            msgs = await bot.send_media_group(group_id, media)
+            msg = msgs[0]
+            
+        # Pin the message
+        await bot.pin_chat_message(group_id, msg.message_id)
+        
+        return web.json_response({"status": "ok", "message_id": msg.message_id})
+        
+    except Exception as e:
+        logging.error(f"API Error: {e}")
+        return web.json_response({"error": str(e)}, status=500)
 
 async def on_startup(bot: Bot):
     if config.APP_URL:
@@ -410,6 +474,14 @@ async def main():
     app = web.Application()
     app.router.add_get('/', handle_home)
     app.router.add_get('/health', handle_health)
+    app.router.add_post('/api/post', handle_api_post)
+    
+    # Serve static files from dist directory
+    if os.path.exists('dist'):
+        app.router.add_static('/assets', 'dist/assets')
+        async def serve_index(request):
+            return web.FileResponse('dist/index.html')
+        app.router.add_get('/app', serve_index)
     
     # Start web server
     runner = web.AppRunner(app)
